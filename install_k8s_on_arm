@@ -1,0 +1,37 @@
+sudo apt update
+sudo apt install -y apt-transport-https ca-certificates curl gnupg
+curl -fsSL "https://download.docker.com/linux/raspbian/gpg" | sudo apt-key add -
+echo "deb [arch=armhf] https://download.docker.com/linux/raspbian stretch edge" | sudo tee /etc/apt/sources.list.d/docker.list
+sudo apt update
+apt-cache madison 'docker-ce' | grep '17.12.1' | head -1 | cut -d' ' -f 4
+sudo apt install -y --no-install-recommends docker-ce=17.12.1~ce-0~raspbian
+sudo usermod pi -aG docker
+
+sudo dphys-swapfile swapoff && sudo dphys-swapfile uninstall && sudo update-rc.d dphys-swapfile remove
+
+sudo vi /boot/cmdline.txt  <-- add cgroup_enable=cpuset cgroup_enable=memory to the end of the line
+
+# reboot now
+
+curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
+echo "deb http://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+sudo apt-get update
+
+# use this to find all available kubernetes versions
+curl -s https://packages.cloud.google.com/apt/dists/kubernetes-xenial/main/binary-amd64/Packages | grep Version | awk '{print $2}'
+
+# then install the required packages
+sudo apt-get install -y kubelet=<version> kubectl=<version> kubeadm=<version>
+
+### below only run on the master
+
+sudo kubeadm init --token-ttl=0 --apiserver-advertise-address=192.168.0.100
+
+# now apply the network - weeave in this case
+kubectl apply -f "https://cloud.weave.works/k8s/net?k8s-version=$(kubectl version | base64 | tr -d '\n')"
+
+# when you forget the damn token :-(
+sudo kubeadm token list
+openssl x509 -pubkey -in /etc/kubernetes/pki/ca.crt | openssl rsa -pubin -outform der 2>/dev/null | openssl dgst -sha256 -hex | sed 's/^.* //'
+# then you can this on other nodes
+sudo kubeadm join --token <token> --discovery-token-ca-cert-hash sha256:<hash> 192.168.0.100:6443
